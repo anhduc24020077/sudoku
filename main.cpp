@@ -186,6 +186,7 @@ int main(int argc, char* argv[]) {
     cout << "Goodbye" << endl;
 
     int hole=30+rand()%21;
+    int holeLeft=hole;
     while(hole>0){
         int R=rand()%9;
         int C=rand()%9;
@@ -260,7 +261,11 @@ int main(int argc, char* argv[]) {
             if (event.type == SDL_QUIT||TryLeft==0) {
                 cout<<"game over"<<endl;
                 quit = true;
-            } else if (event.type == SDL_KEYDOWN) {
+            } else if(holeLeft==0){
+                cout<<"thanks for playing my game"<<endl;
+                quit=true;
+            }
+            else if (event.type == SDL_KEYDOWN) {
                 // Xử lý các phím mũi tên để di chuyển ô được chọn
                 switch (event.key.keysym.sym) {
                     case SDLK_ESCAPE:
@@ -303,6 +308,8 @@ int main(int argc, char* argv[]) {
                             if (selectedRow != -1 && selectedCol != -1 && sudokuGrid[selectedRow][selectedCol] == 0) {
                                 if (isSafe(sudokuGrid, selectedRow, selectedCol, number)) {
                                     sudokuGrid[selectedRow][selectedCol] = number;
+                                    holeLeft--;
+                                    cout<<"so o con lai:"<<holeLeft<<endl;
                                 }else{
                                     TryLeft--;
                                     cout<<"so lan thu con lai la:"<<TryLeft<<endl;
@@ -318,9 +325,6 @@ int main(int argc, char* argv[]) {
                     // Tính toán hàng và cột được chọn dựa trên vị trí chuột
                     selectedCol = event.button.x / CELL_SIZE;
                     selectedRow = event.button.y / CELL_SIZE;
-
-                    // In ra hàng và cột đã chọn (chỉ để debug)
-                    cout << "Selected Row: " << selectedRow << ", Selected Col: " << selectedCol << endl;
                 }
             }
         }
@@ -360,7 +364,7 @@ int main(int argc, char* argv[]) {
 
         // Cập nhật màn hình
         SDL_RenderPresent(renderer);
-        SDL_Delay(16); // Thêm delay
+        SDL_Delay(15); // Thêm delay
     }
 
     // Giải phóng tài nguyên
@@ -372,18 +376,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
