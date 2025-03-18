@@ -1,0 +1,19 @@
+# depslib dependency file v1.0
+1742181494 source:c:\users\admin\documents\demosdl\sudoku\main.cpp
+	<iostream>
+	<vector>
+	<SDL.h>
+	<SDL_ttf.h>
+	<cstdlib>
+	<ctime>
+
+1742284267 source:c:\users\admin\documents\demosdl\sudokupro\sudoku\main.cpp
+	<iostream>
+	<vector>
+	<SDL.h>
+	<SDL_ttf.h>
+	<algorithm>
+	<random>
+	<cstdlib>
+	<ctime>
+
