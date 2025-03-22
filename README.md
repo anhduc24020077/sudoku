@@ -1,4 +1,4 @@
-sudoku(Help me update this game)\n
+sudoku(Help me update this game)/n
 Họ tên:Hoàng Việt Anh Đức
 
 MSV:24020077
