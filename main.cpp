@@ -6,6 +6,8 @@
 #include <random>
 #include <cstdlib>
 #include <ctime>
+#include <sstream>
+
 using namespace std;
 
 const int SCREEN_WIDTH = 630;
@@ -14,18 +16,18 @@ const int GRID_SIZE = 9;
 const int CELL_SIZE = SCREEN_WIDTH / GRID_SIZE;
 const int LINE_WIDTH = 2;
 const int THICK_LINE_WIDTH = 4;
+const int GAME_DURATION = 120;
 
 // Màu sắc
 const SDL_Color WHITE = {255, 255, 255, 255};
 const SDL_Color BLACK = {0, 0, 0, 255};
 const SDL_Color HIGHLIGHTED = {200, 200, 200, 255};
-const SDL_Color NUMBER_COLOR = {0, 0, 0, 255}; // Màu chữ số
+const SDL_Color NUMBER_COLOR = {0, 0, 0, 255};
 const SDL_Color MENU_TEXT_COLOR = {0, 0, 255, 255};
-
+const SDL_Color TIMER_COLOR = {255, 0, 0, 255};
 
 int selectedRow = -1;
 int selectedCol = -1;
-
 
 bool isSafe(vector<vector<int>>& board, int row, int col, int num) {
     for (int x = 0; x < GRID_SIZE; x++) {
@@ -85,11 +87,21 @@ TTF_Font* gFont = nullptr;
 
 //Trạng thái Game
 enum GameState {
+    MENU,
     RUNNING,
     PAUSED,
-    MENU
+    GAME_OVER
 };
-GameState gameState = MENU; //bắt đầu ở menu
+GameState gameState = MENU;
+
+// Các lựa chọn trong menu pause
+enum PauseMenuSelection {
+    RESUME,
+    RESTART,
+    QUIT
+};
+
+PauseMenuSelection currentSelection = RESUME;
 
 bool showMenu(SDL_Renderer* renderer) {
     SDL_Event event;
@@ -115,7 +127,7 @@ bool showMenu(SDL_Renderer* renderer) {
 
         SDL_Surface* textSurface = TTF_RenderText_Solid(gFont, "Nhan ENTER de bat dau", MENU_TEXT_COLOR);
         SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
-        SDL_Rect textRect = { SCREEN_WIDTH / 4, SCREEN_HEIGHT / 3, textSurface->w, textSurface->h };
+        SDL_Rect textRect = {SCREEN_WIDTH / 4, SCREEN_HEIGHT / 3, textSurface->w, textSurface->h};
         SDL_RenderCopy(renderer, textTexture, nullptr, &textRect);
 
         SDL_FreeSurface(textSurface);
@@ -131,17 +143,16 @@ void drawLine(SDL_Renderer* renderer, int x1, int y1, int x2, int y2, int width)
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-    // Vẽ một loạt các đường thẳng nhỏ để tạo ra đường kẻ dày
+
     for (int i = -width / 2; i <= width / 2; ++i) {
-        SDL_RenderDrawLine(renderer, x1 + i, y1, x2 + i, y2); // Thay đổi x
-        SDL_RenderDrawLine(renderer, x1, y1 + i, x2, y2 + i); // Thay đổi y (cho đường dọc)
+        SDL_RenderDrawLine(renderer, x1 + i, y1, x2 + i, y2);
+        SDL_RenderDrawLine(renderer, x1, y1 + i, x2, y2 + i);
     }
 }
 
-// Hàm vẽ một hình chữ nhật, được sử dụng để tô sáng ô được chọn
 void drawRectangle(SDL_Renderer* renderer, int x, int y, int w, int h, SDL_Color color) {
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-    SDL_Rect rect = { x, y, w, h };
+    SDL_Rect rect = {x, y, w, h};
     SDL_RenderFillRect(renderer, &rect);
 }
 
@@ -152,7 +163,6 @@ void drawNumber(SDL_Renderer* renderer, int row, int col, int number) {
     string text = to_string(number);
     SDL_Color textColor = NUMBER_COLOR;
 
-    // Đảm bảo gFont hợp lệ
     if (gFont == nullptr) {
         cerr << "Font chưa được tải!" << endl;
         return;
@@ -176,7 +186,7 @@ void drawNumber(SDL_Renderer* renderer, int row, int col, int number) {
     int x = col * CELL_SIZE + (CELL_SIZE - textWidth) / 2;
     int y = row * CELL_SIZE + (CELL_SIZE - textHeight) / 2;
 
-    SDL_Rect renderQuad = { x, y, textWidth, textHeight };
+    SDL_Rect renderQuad = {x, y, textWidth, textHeight};
     SDL_RenderCopy(renderer, textTexture, nullptr, &renderQuad);
 
     SDL_FreeSurface(textSurface);
@@ -198,16 +208,97 @@ void renderPauseScreen(SDL_Renderer* renderer) {
     SDL_FreeSurface(pauseSurface);
     SDL_DestroyTexture(pauseTexture);
 
-    // Vẽ chữ "PAUSED"
-    SDL_Color textColor = {255, 255, 255}; // Màu trắng
-    SDL_Surface* textSurface = TTF_RenderText_Solid(gFont, "PAUSED", textColor);
+    // Vẽ các lựa chọn
+    SDL_Color textColor;
+    SDL_Surface* textSurface;
+    SDL_Texture* textTexture;
+    SDL_Rect textRect;
+
+    // Resume
+    textColor = (currentSelection == RESUME) ? HIGHLIGHTED : WHITE;
+    textSurface = TTF_RenderText_Solid(gFont, "Resume", textColor);
+    textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    textRect.w = textSurface->w;
+    textRect.h = textSurface->h;
+    textRect.x = (SCREEN_WIDTH - textRect.w) / 2;
+    textRect.y = SCREEN_HEIGHT / 3;
+    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+    SDL_FreeSurface(textSurface);
+    SDL_DestroyTexture(textTexture);
+
+    // Restart
+    textColor = (currentSelection == RESTART) ? HIGHLIGHTED : WHITE;
+    textSurface = TTF_RenderText_Solid(gFont, "Restart", textColor);
+    textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    textRect.w = textSurface->w;
+    textRect.h = textSurface->h;
+    textRect.x = (SCREEN_WIDTH - textRect.w) / 2;
+    textRect.y = SCREEN_HEIGHT / 2;
+    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+    SDL_FreeSurface(textSurface);
+    SDL_DestroyTexture(textTexture);
+
+    // Quit
+    textColor = (currentSelection == QUIT) ? HIGHLIGHTED : WHITE;
+    textSurface = TTF_RenderText_Solid(gFont, "Quit", textColor);
+    textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    textRect.w = textSurface->w;
+    textRect.h = textSurface->h;
+    textRect.x = (SCREEN_WIDTH - textRect.w) / 2;
+    textRect.y = SCREEN_HEIGHT * 2 / 3;
+    SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
+    SDL_FreeSurface(textSurface);
+    SDL_DestroyTexture(textTexture);
+}
+
+void renderGameOverScreen(SDL_Renderer* renderer) {
+    SDL_SetRenderDrawColor(renderer, BLACK.r, BLACK.g, BLACK.b, BLACK.a);
+    SDL_RenderClear(renderer);
+
+    SDL_Color textColor = {255, 255, 255};
+    SDL_Surface* textSurfaceGameOver = TTF_RenderText_Solid(gFont, "GAME OVER!", textColor);
+    SDL_Texture* textTextureGameOver = SDL_CreateTextureFromSurface(renderer, textSurfaceGameOver);
+
+    SDL_Surface* textSurfacePlayAgain = TTF_RenderText_Solid(gFont, "Press 'R' to Play Again or 'Q' to Quit", textColor);
+    SDL_Texture* textTexturePlayAgain = SDL_CreateTextureFromSurface(renderer, textSurfacePlayAgain);
+
+    SDL_Rect textRectGameOver;
+    textRectGameOver.w = textSurfaceGameOver->w;
+    textRectGameOver.h = textSurfaceGameOver->h;
+    textRectGameOver.x = (SCREEN_WIDTH - textRectGameOver.w) / 2;
+    textRectGameOver.y = (SCREEN_HEIGHT - textRectGameOver.h) / 3;
+
+    SDL_Rect textRectPlayAgain;
+    textRectPlayAgain.w = textSurfacePlayAgain->w;
+    textRectPlayAgain.h = textSurfacePlayAgain->h;
+    textRectPlayAgain.x = (SCREEN_WIDTH - textRectPlayAgain.w) / 2;
+    textRectPlayAgain.y = (SCREEN_HEIGHT - textRectPlayAgain.h) * 2 / 3;
+
+
+    SDL_RenderCopy(renderer, textTextureGameOver, NULL, &textRectGameOver);
+    SDL_RenderCopy(renderer, textTexturePlayAgain, NULL, &textRectPlayAgain);
+
+    SDL_FreeSurface(textSurfaceGameOver);
+    SDL_DestroyTexture(textTextureGameOver);
+    SDL_FreeSurface(textSurfacePlayAgain);
+    SDL_DestroyTexture(textTexturePlayAgain);
+}
+
+void drawTimer(SDL_Renderer* renderer, int timeLeft) {
+    int minutes = timeLeft / 60;
+    int seconds = timeLeft % 60;
+
+    stringstream timeString;
+    timeString << "Time: " << minutes << ":" << (seconds < 10 ? "0" : "") << seconds;
+
+    SDL_Surface* textSurface = TTF_RenderText_Solid(gFont, timeString.str().c_str(), TIMER_COLOR);
     SDL_Texture* textTexture = SDL_CreateTextureFromSurface(renderer, textSurface);
 
     SDL_Rect textRect;
     textRect.w = textSurface->w;
     textRect.h = textSurface->h;
-    textRect.x = (SCREEN_WIDTH - textRect.w) / 2;
-    textRect.y = (SCREEN_HEIGHT - textRect.h) / 2;
+    textRect.x = 10;
+    textRect.y = 10;
 
     SDL_RenderCopy(renderer, textTexture, NULL, &textRect);
 
@@ -257,7 +348,8 @@ int main(int argc, char* argv[]) {
         cout << "SDL_ttf initialized successfully!" << endl;
     }
 
-    SDL_Window* window = SDL_CreateWindow("Sudoku Whiteboard", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    SDL_Window* window = SDL_CreateWindow("Sudoku Whiteboard", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                          SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
     if (window == nullptr) {
         cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
         TTF_Quit();
@@ -292,6 +384,48 @@ int main(int argc, char* argv[]) {
     else {
         cout << "Font loaded successfully!" << endl;
     }
+
+    // Game timer
+    int timeLeft = GAME_DURATION;
+    Uint32 startTime = 0;
+
+
+    vector<vector<int>> initialSudokuGrid = sudokuGrid;
+    int initialHoleLeft = holeLeft;
+    int initialTryLeft = TryLeft;
+
+    auto resetGame = [&]() {
+        sudokuQuizz = generateSudoku();
+        sudokuGrid.assign(GRID_SIZE, vector<int>(GRID_SIZE, 0));
+        for (int i = 0; i < GRID_SIZE; i++) {
+            for (int k = 0; k < GRID_SIZE; k++) {
+                sudokuGrid[i][k] = sudokuQuizz[i][k];
+            }
+        }
+
+        hole = 30 + rand() % 21;
+        holeLeft = hole;
+        while (hole > 0) {
+            int R = rand() % 9;
+            int C = rand() % 9;
+            if (sudokuGrid[R][C] != 0) {
+                sudokuGrid[R][C] = 0;
+                hole--;
+            }
+        }
+
+        TryLeft = 3;
+        timeLeft = GAME_DURATION;
+        gameState = RUNNING;
+        selectedRow = -1;
+        selectedCol = -1;
+        startTime = SDL_GetTicks();
+        initialSudokuGrid = sudokuGrid;
+        initialHoleLeft = holeLeft;
+        initialTryLeft = TryLeft;
+
+    };
+
     if (!showMenu(renderer)) {
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
@@ -301,6 +435,7 @@ int main(int argc, char* argv[]) {
     }
     else {
         gameState = RUNNING; // Sau menu thì chuyển sang running
+        startTime = SDL_GetTicks(); // Start the timer when the game starts
     }
 
     // Game loop
@@ -309,27 +444,70 @@ int main(int argc, char* argv[]) {
 
     while (!quit) {
         while (SDL_PollEvent(&event) != 0) {
-            if (event.type == SDL_QUIT || TryLeft == 0) {
+            if (event.type == SDL_QUIT) {
                 cout << "game over" << endl;
                 quit = true;
+            }
+            else if (gameState == GAME_OVER) {
+                if (event.type == SDL_KEYDOWN) {
+                    if (event.key.keysym.sym == SDLK_r) {
+                        // Chơi lại
+                        resetGame();
+
+                    }
+                    else if (event.key.keysym.sym == SDLK_q) {
+                        // Thoát game
+                        quit = true;
+                    }
+                }
+            }
+            else if (TryLeft == 0 || timeLeft <= 0) {
+                gameState = GAME_OVER;
             }
             else if (holeLeft == 0) {
                 cout << "thanks for playing my game" << endl;
                 quit = true;
             }
+            else if (gameState == PAUSED) { // Xử lý menu pause
+                if (event.type == SDL_KEYDOWN) {
+                    switch (event.key.keysym.sym) {
+                        case SDLK_UP:
+                            currentSelection = (PauseMenuSelection)((currentSelection - 1 + 3) % 3);
+                            break;
+                        case SDLK_DOWN:
+                            currentSelection = (PauseMenuSelection)((currentSelection + 1) % 3);
+                            break;
+                        case SDLK_RETURN:
+                            switch (currentSelection) {
+                                case RESUME:
+                                    gameState = RUNNING;
+                                    startTime = SDL_GetTicks() - (GAME_DURATION - timeLeft) * 1000; // tiếp tục thời gian
+                                    break;
+                                case RESTART:
+                                    resetGame();
+                                    break;
+                                case QUIT:
+                                    quit = true;
+                                    break;
+                            }
+                            break;
+                        case SDLK_ESCAPE:
+                            gameState = RUNNING;
+                            startTime = SDL_GetTicks() - (GAME_DURATION - timeLeft) * 1000;
+                            break;
+                    }
+                }
+            }
             else if (event.type == SDL_KEYDOWN) {
-                // Xử lý các phím mũi tên để di chuyển ô được chọn
+
                 switch (event.key.keysym.sym) {
                     case SDLK_ESCAPE:
-                        quit=true;
-                        cout<<"So sad;((";
+                        quit = true;
+                        cout << "So sad;((";
                         break;
                     case SDLK_p:
                         if (gameState == RUNNING) {
                             gameState = PAUSED;
-                        }
-                        else if (gameState == PAUSED) {
-                            gameState = RUNNING;
                         }
                         break;
                     case SDLK_UP:
@@ -370,7 +548,8 @@ int main(int argc, char* argv[]) {
                     case SDLK_9:
                     {
                         int number = event.key.keysym.sym - SDLK_0;
-                        if (selectedRow != -1 && selectedCol != -1 && sudokuGrid[selectedRow][selectedCol] == 0) {
+                        if (selectedRow != -1 && selectedCol != -1 &&
+                            sudokuGrid[selectedRow][selectedCol] == 0) {
                             if (isSafe(sudokuGrid, selectedRow, selectedCol, number)) {
                                 sudokuGrid[selectedRow][selectedCol] = number;
                                 holeLeft--;
@@ -394,6 +573,21 @@ int main(int argc, char* argv[]) {
                 }
             }
         }
+
+        // Update game state
+        if (gameState == RUNNING) {
+            Uint32 currentTime = SDL_GetTicks();
+            Uint32 elapsedTime = currentTime - startTime;
+            if (elapsedTime >= 1000) {
+                timeLeft--;
+                startTime = currentTime; // Reset startTime sau mỗi giây
+            }
+
+            if (timeLeft <= 0 || TryLeft == 0) {
+                gameState = GAME_OVER;
+            }
+        }
+
         //render
         SDL_SetRenderDrawColor(renderer, WHITE.r, WHITE.g, WHITE.b, WHITE.a);
         SDL_RenderClear(renderer);
@@ -401,7 +595,8 @@ int main(int argc, char* argv[]) {
         //Vẽ game
         if (gameState == RUNNING || gameState == PAUSED) { // Vẽ game khi đang RUNNING hoặc PAUSED
             if (selectedRow != -1 && selectedCol != -1) {
-                drawRectangle(renderer, selectedCol * CELL_SIZE, selectedRow * CELL_SIZE, CELL_SIZE, CELL_SIZE, HIGHLIGHTED);
+                drawRectangle(renderer, selectedCol * CELL_SIZE, selectedRow * CELL_SIZE, CELL_SIZE, CELL_SIZE,
+                              HIGHLIGHTED);
             }
 
             SDL_SetRenderDrawColor(renderer, BLACK.r, BLACK.g, BLACK.b, BLACK.a);
@@ -427,17 +622,27 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        //Vẽ timer (luôn vẽ ngoài lưới sudoku)
+        drawTimer(renderer, timeLeft);
+
+        //Vẽ pause
         if (gameState == PAUSED) {
             renderPauseScreen(renderer);
         }
 
+        if (gameState == GAME_OVER) {
+            renderGameOverScreen(renderer);
+        }
+
+        // Cập nhật màn hình
         SDL_RenderPresent(renderer);
         SDL_Delay(15); // Thêm delay
     }
 
+    // Giải phóng tài nguyên
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
-    TTF_CloseFont(gFont); 
+    TTF_CloseFont(gFont); // Close the font
     TTF_Quit();
     SDL_Quit();
 
