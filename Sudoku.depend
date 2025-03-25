@@ -17,3 +17,14 @@
 	<cstdlib>
 	<ctime>
 
+1742896825 source:c:\users\admin\documents\demosdl\sudokufianl\sudoku\main.cpp
+	<iostream>
+	<vector>
+	<SDL.h>
+	<SDL_ttf.h>
+	<algorithm>
+	<random>
+	<cstdlib>
+	<ctime>
+	<sstream>
+
