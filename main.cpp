@@ -16,7 +16,7 @@ const int GRID_SIZE = 9;
 const int CELL_SIZE = SCREEN_WIDTH / GRID_SIZE;
 const int LINE_WIDTH = 2;
 const int THICK_LINE_WIDTH = 4;
-const int GAME_DURATION = 120;
+const int GAME_DURATION = 1800;
 
 // Màu sắc
 const SDL_Color WHITE = {255, 255, 255, 255};
@@ -35,10 +35,11 @@ bool isSafe(vector<vector<int>>& board, int row, int col, int num) {
             return false;
     }
 
-    int startRow = row - row % 3, startCol = col - col % 3;
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            if (board[i + startRow][j + startCol] == num)
+    int startRow = row - row % 3;
+    int startCol = col - col % 3;
+    for (int i = startRow; i < startRow+3; i++) {
+        for (int j = startCol; j < startCol+3; j++) {
+            if (board[i][j] == num && (i!=row || j!=col))
                 return false;
         }
     }
@@ -46,42 +47,41 @@ bool isSafe(vector<vector<int>>& board, int row, int col, int num) {
     return true;
 }
 
-bool fillSudoku(vector<vector<int>>& board, int row, int col) {
-    if (row == GRID_SIZE - 1 && col == GRID_SIZE)
-        return true;
-    if (col == GRID_SIZE) {
-        row++;
-        col = 0;
-    }
-    if (board[row][col] != 0)
-        return fillSudoku(board, row, col + 1);
+//Sửa đổi hàm fillPlace và buildSudoku để tạo Sudoku hợp lệ và hiệu quả hơn
+bool solveSudoku(vector<vector<int>>& board) {
+    for (int row = 0; row < GRID_SIZE; row++) {
+        for (int col = 0; col < GRID_SIZE; col++) {
+            if (board[row][col] == 0) {
+                for (int number = 1; number <= GRID_SIZE; number++) {
+                    if (isSafe(board, row, col, number)) {
+                        board[row][col] = number;
 
-    vector<int> numbers(GRID_SIZE);
-    iota(numbers.begin(), numbers.end(), 1);
-    int shuffleBoard = rand() % 30 + 1;
-    for (int i = 0; i < shuffleBoard; i++) {
-        shuffle(numbers.begin(), numbers.end(), random_device());
+                        if (solveSudoku(board)) {
+                            return true; // Đệ quy thành công
+                        }
+                        else {
+                            board[row][col] = 0; // Backtrack
+                        }
+                    }
+                }
+                return false; // Không có số nào hợp lệ
+            }
+        }
     }
-    shuffle(numbers.begin(), numbers.end(), random_device());
+    return true; // Đã giải xong
+}
 
-    for (int num : numbers) {
-        if (isSafe(board, row, col, num)) {
-            board[row][col] = num;
-            if (fillSudoku(board, row, col + 1))
-                return true;
-            board[row][col] = 0;
+void buildSudoku(vector<vector<int>>& board) {
+    // Khởi tạo bảng với 0
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            board[i][j] = 0;
         }
     }
 
-    return false;
+    // Điền các số một cách ngẫu nhiên và giải Sudoku
+    solveSudoku(board);
 }
-
-vector<vector<int>> generateSudoku() {
-    vector<vector<int>> board(GRID_SIZE, vector<int>(GRID_SIZE, 0));
-    fillSudoku(board, 0, 0);
-    return board;
-}
-
 // Font
 TTF_Font* gFont = nullptr;
 
@@ -157,11 +157,11 @@ void drawRectangle(SDL_Renderer* renderer, int x, int y, int w, int h, SDL_Color
 }
 
 
-void drawNumber(SDL_Renderer* renderer, int row, int col, int number) {
-
+void drawNumber(SDL_Renderer* renderer, int row, int col, int number, bool isOriginal = false) {
     if (number == 0) return;
+
     string text = to_string(number);
-    SDL_Color textColor = NUMBER_COLOR;
+    SDL_Color textColor = isOriginal ? BLACK : NUMBER_COLOR; // Màu khác cho số ban đầu
 
     if (gFont == nullptr) {
         cerr << "Font chưa được tải!" << endl;
@@ -179,8 +179,8 @@ void drawNumber(SDL_Renderer* renderer, int row, int col, int number) {
         cerr << "Unable to create texture from rendered text! SDL Error: " << SDL_GetError() << endl;
         SDL_FreeSurface(textSurface);
         return;
-
     }
+
     int textWidth = textSurface->w;
     int textHeight = textSurface->h;
     int x = col * CELL_SIZE + (CELL_SIZE - textWidth) / 2;
@@ -308,44 +308,38 @@ void drawTimer(SDL_Renderer* renderer, int timeLeft) {
 
 int main(int argc, char* argv[]) {
     srand(time(0));
-    cout << "Hello" << endl;
-    int TryLeft = 3;
-    vector<vector<int>> sudokuQuizz = generateSudoku();
-    vector<vector<int>> sudokuGrid(GRID_SIZE, vector<int>(GRID_SIZE, 0));
-    for (int i = 0; i < GRID_SIZE; i++) {
-        for (int k = 0; k < GRID_SIZE; k++) {
-            sudokuGrid[i][k] = sudokuQuizz[i][k];
-        }
-    }
-    cout << "Goodbye" << endl;
 
-    int hole = 30 + rand() % 21;
+    int TryLeft = 3;
+    vector<vector<int>> sudokuQuizz(GRID_SIZE, vector<int>(GRID_SIZE, 0));
+    buildSudoku(sudokuQuizz); // Tạo Sudoku đã giải
+
+    vector<vector<int>> sudokuGrid = sudokuQuizz; // Sao chép để tạo bảng trò chơi
+    vector<vector<bool>> isOriginal(GRID_SIZE, vector<bool>(GRID_SIZE, true)); // Đánh dấu các ô ban đầu
+
+    int hole = 40; // Số lượng ô để loại bỏ
     int holeLeft = hole;
-    while (hole > 0) {
-        int R = rand() % 9;
-        int C = rand() % 9;
-        if (sudokuGrid[R][C] != 0) {
-            sudokuGrid[R][C] = 0;
-            hole--;
-        }
+
+    // Tạo các ô trống
+    for (int i = 0; i < hole; ++i) {
+        int row, col;
+        do {
+            row = rand() % GRID_SIZE;
+            col = rand() % GRID_SIZE;
+        } while (sudokuGrid[row][col] == 0); // Đảm bảo không xóa ô đã trống
+
+        sudokuGrid[row][col] = 0; // Loại bỏ số
+        isOriginal[row][col] = false; // Đánh dấu là không phải ô ban đầu
     }
 
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << endl;
         return 1;
     }
-    else {
-        cout << "SDL initialized successfully!" << endl;
-    }
-
 
     if (TTF_Init() == -1) {
         cerr << "SDL_ttf could not initialize! SDL_ttf Error: " << TTF_GetError() << endl;
         SDL_Quit();
         return 1;
-    }
-    else {
-        cout << "SDL_ttf initialized successfully!" << endl;
     }
 
     SDL_Window* window = SDL_CreateWindow("Sudoku Whiteboard", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -356,9 +350,6 @@ int main(int argc, char* argv[]) {
         SDL_Quit();
         return 1;
     }
-    else {
-        cout << "Window created successfully!" << endl;
-    }
 
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (renderer == nullptr) {
@@ -367,9 +358,6 @@ int main(int argc, char* argv[]) {
         TTF_Quit();
         SDL_Quit();
         return 1;
-    }
-    else {
-        cout << "Renderer created successfully!" << endl;
     }
 
     gFont = TTF_OpenFont("C:\\Windows\\Fonts\\Arial.ttf", 24); // Thay "arial.ttf" bằng đường dẫn đến phông chữ của bạn
@@ -381,36 +369,28 @@ int main(int argc, char* argv[]) {
         SDL_Quit();
         return 1;
     }
-    else {
-        cout << "Font loaded successfully!" << endl;
-    }
 
     // Game timer
     int timeLeft = GAME_DURATION;
     Uint32 startTime = 0;
 
 
-    vector<vector<int>> initialSudokuGrid = sudokuGrid;
-    int initialHoleLeft = holeLeft;
-    int initialTryLeft = TryLeft;
 
     auto resetGame = [&]() {
-        sudokuQuizz = generateSudoku();
-        sudokuGrid.assign(GRID_SIZE, vector<int>(GRID_SIZE, 0));
-        for (int i = 0; i < GRID_SIZE; i++) {
-            for (int k = 0; k < GRID_SIZE; k++) {
-                sudokuGrid[i][k] = sudokuQuizz[i][k];
-            }
-        }
+        buildSudoku(sudokuQuizz);
+        sudokuGrid = sudokuQuizz;
+        isOriginal.assign(GRID_SIZE, vector<bool>(GRID_SIZE, true));
 
-        hole = 30 + rand() % 21;
         holeLeft = hole;
-        while (hole > 0) {
-            int R = rand() % 9;
-            int C = rand() % 9;
-            if (sudokuGrid[R][C] != 0) {
-                sudokuGrid[R][C] = 0;
-                hole--;
+        for (int i = 0; i < GRID_SIZE; ++i) {
+            for (int k = 0; k < GRID_SIZE; ++k) {
+                if (isOriginal[i][k]) {
+                    if (rand() % 2 == 0 && holeLeft > 0) {
+                        sudokuGrid[i][k] = 0;
+                        isOriginal[i][k] = false;
+                        holeLeft--;
+                    }
+                }
             }
         }
 
@@ -420,10 +400,6 @@ int main(int argc, char* argv[]) {
         selectedRow = -1;
         selectedCol = -1;
         startTime = SDL_GetTicks();
-        initialSudokuGrid = sudokuGrid;
-        initialHoleLeft = holeLeft;
-        initialTryLeft = TryLeft;
-
     };
 
     if (!showMenu(renderer)) {
@@ -445,28 +421,17 @@ int main(int argc, char* argv[]) {
     while (!quit) {
         while (SDL_PollEvent(&event) != 0) {
             if (event.type == SDL_QUIT) {
-                cout << "game over" << endl;
                 quit = true;
             }
             else if (gameState == GAME_OVER) {
                 if (event.type == SDL_KEYDOWN) {
                     if (event.key.keysym.sym == SDLK_r) {
-                        // Chơi lại
                         resetGame();
-
                     }
                     else if (event.key.keysym.sym == SDLK_q) {
-                        // Thoát game
                         quit = true;
                     }
                 }
-            }
-            else if (TryLeft == 0 || timeLeft <= 0) {
-                gameState = GAME_OVER;
-            }
-            else if (holeLeft == 0) {
-                cout << "thanks for playing my game" << endl;
-                quit = true;
             }
             else if (gameState == PAUSED) { // Xử lý menu pause
                 if (event.type == SDL_KEYDOWN) {
@@ -503,7 +468,6 @@ int main(int argc, char* argv[]) {
                 switch (event.key.keysym.sym) {
                     case SDLK_ESCAPE:
                         quit = true;
-                        cout << "So sad;((";
                         break;
                     case SDLK_p:
                         if (gameState == RUNNING) {
@@ -514,29 +478,22 @@ int main(int argc, char* argv[]) {
                         if (selectedRow > 0) {
                             selectedRow--;
                         }
-                        else if (selectedRow == 0) {
-                            selectedRow = GRID_SIZE - 1;
-                        }
                         break;
                     case SDLK_DOWN:
                         if (selectedRow < GRID_SIZE - 1) {
                             selectedRow++;
                         }
-                        else if (selectedRow == GRID_SIZE - 1) selectedRow = 0;
                         break;
                     case SDLK_LEFT:
                         if (selectedCol > 0) {
                             selectedCol--;
                         }
-                        else if (selectedCol == 0) selectedCol = GRID_SIZE - 1;
                         break;
                     case SDLK_RIGHT:
                         if (selectedCol < GRID_SIZE - 1) {
                             selectedCol++;
                         }
-                        else if (selectedCol == GRID_SIZE - 1) selectedCol = 0;
                         break;
-                        // Xử lý nhập số (1-9)
                     case SDLK_1:
                     case SDLK_2:
                     case SDLK_3:
@@ -548,26 +505,28 @@ int main(int argc, char* argv[]) {
                     case SDLK_9:
                     {
                         int number = event.key.keysym.sym - SDLK_0;
-                        if (selectedRow != -1 && selectedCol != -1 &&
-                            sudokuGrid[selectedRow][selectedCol] == 0) {
+                        if (selectedRow != -1 && selectedCol != -1 && !isOriginal[selectedRow][selectedCol]) {
                             if (isSafe(sudokuGrid, selectedRow, selectedCol, number)) {
                                 sudokuGrid[selectedRow][selectedCol] = number;
                                 holeLeft--;
-                                cout << "so o con lai:" << holeLeft << endl;
                             }
                             else {
                                 TryLeft--;
-                                cout << "so lan thu con lai la:" << TryLeft << endl;
                             }
                         }
                         break;
                     }
-                         // Xử lý xóa (0)
+
+                    case SDLK_BACKSPACE:
+                    case SDLK_DELETE:
+                        if (selectedRow != -1 && selectedCol != -1 && !isOriginal[selectedRow][selectedCol]) {
+                            sudokuGrid[selectedRow][selectedCol] = 0;
+                        }
+                        break;
                 }
             }
             else if (event.type == SDL_MOUSEBUTTONDOWN) {
                 if (event.button.button == SDL_BUTTON_LEFT) {
-                    // Tính toán hàng và cột được chọn dựa trên vị trí chuột
                     selectedCol = event.button.x / CELL_SIZE;
                     selectedRow = event.button.y / CELL_SIZE;
                 }
@@ -585,6 +544,11 @@ int main(int argc, char* argv[]) {
 
             if (timeLeft <= 0 || TryLeft == 0) {
                 gameState = GAME_OVER;
+            }
+
+            if (holeLeft == 0) {
+                cout << "thanks for playing my game" << endl;
+                quit = true;
             }
         }
 
@@ -617,7 +581,7 @@ int main(int argc, char* argv[]) {
             // Vẽ các số trong lưới
             for (int row = 0; row < GRID_SIZE; ++row) {
                 for (int col = 0; col < GRID_SIZE; ++col) {
-                    drawNumber(renderer, row, col, sudokuGrid[row][col]);
+                    drawNumber(renderer, row, col, sudokuGrid[row][col], isOriginal[row][col]);
                 }
             }
         }
