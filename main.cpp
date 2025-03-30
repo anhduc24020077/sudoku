@@ -2,6 +2,8 @@
 #include <vector>
 #include <SDL.h>
 #include <SDL_ttf.h>
+#include <SDL_image.h>
+#include <SDL_mixer.h>
 #include <algorithm>
 #include <random>
 #include <cstdlib>
@@ -29,17 +31,47 @@ const SDL_Color TIMER_COLOR = {255, 0, 0, 255};
 int selectedRow = -1;
 int selectedCol = -1;
 
+// Font
+TTF_Font* gFont = nullptr;
+
+// Âm thanh
+Mix_Chunk* gSound = nullptr;
+
+//Texture background
+SDL_Texture* backgroundTexture = nullptr;
+
+//Trạng thái Game
+enum GameState {
+    MENU,
+    RUNNING,
+    PAUSED,
+    GAME_OVER
+};
+GameState gameState = MENU;
+
+// Các lựa chọn trong menu pause
+enum PauseMenuSelection {
+    RESUME,
+    RESTART,
+    QUIT
+};
+
+PauseMenuSelection currentSelection = RESUME;
+
+// Hàm kiểm tra tính hợp lệ của số trong Sudoku
 bool isSafe(vector<vector<int>>& board, int row, int col, int num) {
+    // Kiểm tra hàng và cột
     for (int x = 0; x < GRID_SIZE; x++) {
         if (board[row][x] == num || board[x][col] == num)
             return false;
     }
 
+    // Kiểm tra ô 3x3
     int startRow = row - row % 3;
     int startCol = col - col % 3;
-    for (int i = startRow; i < startRow+3; i++) {
-        for (int j = startCol; j < startCol+3; j++) {
-            if (board[i][j] == num && (i!=row || j!=col))
+    for (int i = startRow; i < startRow + 3; i++) {
+        for (int j = startCol; j < startCol + 3; j++) {
+            if (board[i][j] == num) // Bỏ điều kiện thừa (i!=row || j!=col)
                 return false;
         }
     }
@@ -47,7 +79,7 @@ bool isSafe(vector<vector<int>>& board, int row, int col, int num) {
     return true;
 }
 
-//Sửa đổi hàm fillPlace và buildSudoku để tạo Sudoku hợp lệ và hiệu quả hơn
+// Hàm giải Sudoku (Backtracking)
 bool solveSudoku(vector<vector<int>>& board) {
     for (int row = 0; row < GRID_SIZE; row++) {
         for (int col = 0; col < GRID_SIZE; col++) {
@@ -71,6 +103,7 @@ bool solveSudoku(vector<vector<int>>& board) {
     return true; // Đã giải xong
 }
 
+// Hàm tạo Sudoku
 void buildSudoku(vector<vector<int>>& board) {
     // Khởi tạo bảng với 0
     for (int i = 0; i < GRID_SIZE; i++) {
@@ -82,27 +115,8 @@ void buildSudoku(vector<vector<int>>& board) {
     // Điền các số một cách ngẫu nhiên và giải Sudoku
     solveSudoku(board);
 }
-// Font
-TTF_Font* gFont = nullptr;
 
-//Trạng thái Game
-enum GameState {
-    MENU,
-    RUNNING,
-    PAUSED,
-    GAME_OVER
-};
-GameState gameState = MENU;
-
-// Các lựa chọn trong menu pause
-enum PauseMenuSelection {
-    RESUME,
-    RESTART,
-    QUIT
-};
-
-PauseMenuSelection currentSelection = RESUME;
-
+// Hàm hiển thị menu
 bool showMenu(SDL_Renderer* renderer) {
     SDL_Event event;
     bool inMenu = true;
@@ -138,10 +152,12 @@ bool showMenu(SDL_Renderer* renderer) {
     return false;
 }
 
+// Hàm vẽ đường thẳng
 void drawLine(SDL_Renderer* renderer, int x1, int y1, int x2, int y2, int width) {
     SDL_SetRenderDrawColor(renderer, BLACK.r, BLACK.g, BLACK.b, BLACK.a);
 
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    // Không cần thiết phải set blend mode ở đây, chỉ cần set một lần khi khởi tạo renderer
+    // SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
 
     for (int i = -width / 2; i <= width / 2; ++i) {
@@ -150,13 +166,14 @@ void drawLine(SDL_Renderer* renderer, int x1, int y1, int x2, int y2, int width)
     }
 }
 
+// Hàm vẽ hình chữ nhật
 void drawRectangle(SDL_Renderer* renderer, int x, int y, int w, int h, SDL_Color color) {
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
     SDL_Rect rect = {x, y, w, h};
     SDL_RenderFillRect(renderer, &rect);
 }
 
-
+// Hàm vẽ số
 void drawNumber(SDL_Renderer* renderer, int row, int col, int number, bool isOriginal = false) {
     if (number == 0) return;
 
@@ -193,6 +210,7 @@ void drawNumber(SDL_Renderer* renderer, int row, int col, int number, bool isOri
     SDL_DestroyTexture(textTexture);
 }
 
+// Hàm vẽ màn hình pause
 void renderPauseScreen(SDL_Renderer* renderer) {
     // Tạo một bề mặt (surface) màu đen mờ
     SDL_Surface* pauseSurface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32, 0, 0, 0, 0);
@@ -251,6 +269,7 @@ void renderPauseScreen(SDL_Renderer* renderer) {
     SDL_DestroyTexture(textTexture);
 }
 
+// Hàm vẽ màn hình game over
 void renderGameOverScreen(SDL_Renderer* renderer) {
     SDL_SetRenderDrawColor(renderer, BLACK.r, BLACK.g, BLACK.b, BLACK.a);
     SDL_RenderClear(renderer);
@@ -284,6 +303,7 @@ void renderGameOverScreen(SDL_Renderer* renderer) {
     SDL_DestroyTexture(textTexturePlayAgain);
 }
 
+// Hàm vẽ timer
 void drawTimer(SDL_Renderer* renderer, int timeLeft) {
     int minutes = timeLeft / 60;
     int seconds = timeLeft % 60;
@@ -306,6 +326,32 @@ void drawTimer(SDL_Renderer* renderer, int timeLeft) {
     SDL_DestroyTexture(textTexture);
 }
 
+// Hàm load texture
+SDL_Texture* loadTexture(const string& path, SDL_Renderer* renderer) {
+    SDL_Surface* loadedSurface = IMG_Load(path.c_str());
+    if (loadedSurface == nullptr) {
+        cerr << "Unable to load image " << path << "! SDL_image Error: " << IMG_GetError() << endl;
+        return nullptr;
+    }
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, loadedSurface);
+    if (texture == nullptr) {
+        cerr << "Unable to create texture from " << path << "! SDL Error: " << SDL_GetError() << endl;
+    }
+
+    SDL_FreeSurface(loadedSurface);
+    return texture;
+}
+
+// Hàm load âm thanh
+Mix_Chunk* loadSound(const string& path) {
+    Mix_Chunk* sound = Mix_LoadWAV(path.c_str());
+    if (sound == nullptr) {
+        cerr << "Failed to load sound effect! SDL_mixer Error: " << Mix_GetError() << endl;
+    }
+    return sound;
+}
+
 int main(int argc, char* argv[]) {
     srand(time(0));
 
@@ -320,18 +366,23 @@ int main(int argc, char* argv[]) {
     int holeLeft = hole;
 
     // Tạo các ô trống
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<> distrib(0, GRID_SIZE - 1);
     for (int i = 0; i < hole; ++i) {
         int row, col;
         do {
-            row = rand() % GRID_SIZE;
-            col = rand() % GRID_SIZE;
-        } while (sudokuGrid[row][col] == 0); // Đảm bảo không xóa ô đã trống
+            row = distrib(gen);
+            col = distrib(gen);
+        } while (sudokuGrid[row][col] == 0);  // Đảm bảo xóa các ô có giá trị
 
-        sudokuGrid[row][col] = 0; // Loại bỏ số
-        isOriginal[row][col] = false; // Đánh dấu là không phải ô ban đầu
+        sudokuGrid[row][col] = 0;
+        isOriginal[row][col] = false;
+        holeLeft--;
     }
 
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {  // Thêm SDL_INIT_AUDIO
         cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << endl;
         return 1;
     }
@@ -342,10 +393,31 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Initialize SDL_mixer
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        cerr << "SDL_mixer could not initialize! SDL_mixer Error: " << Mix_GetError() << endl;
+        TTF_Quit();
+        SDL_Quit();
+        return 1;
+    }
+
+    // Initialize SDL_image
+    int imgFlags = IMG_INIT_PNG;  // Or the appropriate flags for the image types you want to load
+    if (!(IMG_Init(imgFlags) & imgFlags)) {
+        cerr << "SDL_image could not initialize! SDL_image Error: " << IMG_GetError() << endl;
+        Mix_Quit();
+        TTF_Quit();
+        SDL_Quit();
+        return 1;
+    }
+
+
     SDL_Window* window = SDL_CreateWindow("Sudoku Whiteboard", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                           SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
     if (window == nullptr) {
         cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
+        IMG_Quit();
+        Mix_Quit();
         TTF_Quit();
         SDL_Quit();
         return 1;
@@ -355,16 +427,24 @@ int main(int argc, char* argv[]) {
     if (renderer == nullptr) {
         cerr << "Renderer could not be created! SDL_Error: " << SDL_GetError() << std::endl;
         SDL_DestroyWindow(window);
+        IMG_Quit();
+        Mix_Quit();
         TTF_Quit();
         SDL_Quit();
         return 1;
     }
 
-    gFont = TTF_OpenFont("C:\\Windows\\Fonts\\Arial.ttf", 24); // Thay "arial.ttf" bằng đường dẫn đến phông chữ của bạn
+    //Set màu nền cho renderer
+    SDL_SetRenderDrawColor(renderer, WHITE.r, WHITE.g, WHITE.b, WHITE.a);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+    gFont = TTF_OpenFont("C:\\Windows\\Fonts\\Arial.ttf", 24);
     if (gFont == nullptr) {
         cerr << "Failed to load font! SDL_ttf Error: " << TTF_GetError() << std::endl;
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
+        IMG_Quit();
+        Mix_Quit();
         TTF_Quit();
         SDL_Quit();
         return 1;
@@ -375,25 +455,30 @@ int main(int argc, char* argv[]) {
     Uint32 startTime = 0;
 
 
-
     auto resetGame = [&]() {
         buildSudoku(sudokuQuizz);
         sudokuGrid = sudokuQuizz;
         isOriginal.assign(GRID_SIZE, vector<bool>(GRID_SIZE, true));
 
         holeLeft = hole;
+
         for (int i = 0; i < GRID_SIZE; ++i) {
             for (int k = 0; k < GRID_SIZE; ++k) {
-                if (isOriginal[i][k]) {
-                    if (rand() % 2 == 0 && holeLeft > 0) {
-                        sudokuGrid[i][k] = 0;
-                        isOriginal[i][k] = false;
-                        holeLeft--;
-                    }
-                }
+                isOriginal[i][k] = true;
             }
         }
 
+        for (int i = 0; i < hole; ++i) {
+            int row, col;
+            do {
+                row = distrib(gen);
+                col = distrib(gen);
+            } while (sudokuGrid[row][col] == 0);
+
+            sudokuGrid[row][col] = 0;
+            isOriginal[row][col] = false;
+            holeLeft--;
+        }
         TryLeft = 3;
         timeLeft = GAME_DURATION;
         gameState = RUNNING;
@@ -508,7 +593,8 @@ int main(int argc, char* argv[]) {
                         if (selectedRow != -1 && selectedCol != -1 && !isOriginal[selectedRow][selectedCol]) {
                             if (isSafe(sudokuGrid, selectedRow, selectedCol, number)) {
                                 sudokuGrid[selectedRow][selectedCol] = number;
-                                holeLeft--;
+                                //holeLeft--; Không giảm holeLeft khi điền số
+                                Mix_PlayChannel(-1, gSound, 0); // Phát âm thanh
                             }
                             else {
                                 TryLeft--;
@@ -546,8 +632,20 @@ int main(int argc, char* argv[]) {
                 gameState = GAME_OVER;
             }
 
-            if (holeLeft == 0) {
-                cout << "thanks for playing my game" << endl;
+            //Kiểm tra xem người chơi đã giải xong chưa
+            bool solved = true;
+            for(int i = 0; i < GRID_SIZE; ++i) {
+                for(int j = 0; j < GRID_SIZE; ++j) {
+                    if(sudokuGrid[i][j] == 0) {
+                        solved = false;
+                        break;
+                    }
+                }
+                if(!solved) break;
+            }
+
+            if (solved) {
+                cout << "Congratulations! You solved the Sudoku!" << endl;
                 quit = true;
             }
         }
@@ -555,6 +653,9 @@ int main(int argc, char* argv[]) {
         //render
         SDL_SetRenderDrawColor(renderer, WHITE.r, WHITE.g, WHITE.b, WHITE.a);
         SDL_RenderClear(renderer);
+
+        //Vẽ background
+         SDL_RenderCopy(renderer, backgroundTexture, NULL, NULL);
 
         //Vẽ game
         if (gameState == RUNNING || gameState == PAUSED) { // Vẽ game khi đang RUNNING hoặc PAUSED
@@ -598,15 +699,19 @@ int main(int argc, char* argv[]) {
             renderGameOverScreen(renderer);
         }
 
-        // Cập nhật màn hình
+
         SDL_RenderPresent(renderer);
-        SDL_Delay(15); // Thêm delay
+        SDL_Delay(10);
     }
 
-    // Giải phóng tài nguyên
+    // Giải phóng bộ nhớ và đóng SDL
+    SDL_DestroyTexture(backgroundTexture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
-    TTF_CloseFont(gFont); // Close the font
+    TTF_CloseFont(gFont);
+    Mix_FreeChunk(gSound);
+    Mix_Quit();
+    IMG_Quit();
     TTF_Quit();
     SDL_Quit();
 
